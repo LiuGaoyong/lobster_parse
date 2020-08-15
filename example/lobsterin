@@ -1,0 +1,5 @@
+COHPstartEnergy  -30
+COHPendEnergy	  12
+usebasisset pbeVaspFit2015
+includeOrbitals spd
+cohpgenerator from 0.5 to 3.5

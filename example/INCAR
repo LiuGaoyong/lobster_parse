@@ -1,0 +1,3 @@
+ISMEAR = 0
+SIGMA  = 0.05
+NBANDS = 280
