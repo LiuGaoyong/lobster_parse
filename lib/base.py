@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
 import os, sys, re
+import numpy as np
 import pandas as pd 
 from scipy.integrate import simps
 
 
-class LobsterParse():
+class LobsterCohpcarParse():
     '''
     用于综合解析LOBSTER结果文件的类
     '''
     def __init__(self, lobster_path:str):
         if os.path.exists(os.path.join(lobster_path, 'lobsterout')):
             self.file_list = os.listdir(lobster_path)
+            with open(os.path.join(lobster_path, 'lobsterout')) as f:
+                data = f.read().split('\n')
+            spin_line = [line for line in data if 'spin' in line]
+            if len(spin_line) > 0:
+                self.is_spin_polarized = True
+            else:
+                self.is_spin_polarized = False
         elif os.path.exists(os.path.join(lobster_path, 'lobsterin')):
             print(lobster_path, "is a LOBSTER project.\n" + "    but output files don't exist !!!")
             exit(101)
@@ -19,7 +27,8 @@ class LobsterParse():
             exit(102)
         self.root_path  =   lobster_path
 
-    def cohp_as_str(self, is_coop=False):
+
+    def _cohp_as_str(self, is_coop=False):
         if is_coop:
             target = 'COOPCAR.lobster'
         else:
@@ -33,7 +42,7 @@ class LobsterParse():
             exit(103)
 
     def cohp_as_DataFrame(self, is_coop=False):
-        data = self.cohp_as_str(is_coop)
+        data = self._cohp_as_str(is_coop)
         data = data.splitlines()
         second_line = data[1].split()
         num_bonds   = int(second_line[0])
@@ -43,53 +52,65 @@ class LobsterParse():
         columns.append( 'COHP('+bonds[0]+')') 
         columns.append('ICOHP('+bonds[0]+')')
         for i in range(1, num_bonds):
-            bond_name = bonds[i].split('(')[0].split(':')[-1]
-            columns.append( 'COHP('+bond_name+')') 
-            columns.append('ICOHP('+bond_name+')')
+            bond_name   = bonds[i].split('(')[0].split(':')[-1]
+            bond_length = bonds[i].split('(')[-1].split(')')[0]
+            columns.append( 'COHP('+bond_name+')_'+bond_length+'') 
+            columns.append('ICOHP('+bond_name+')_'+bond_length+'')
         result = []
         for i in bonds_data:
             result.append(i.split())
-        result = pd.DataFrame(result, columns=columns, dtype=float)
-        return result
+        result = pd.DataFrame(result, dtype=float)
+        #对自旋极化和非极化体系的处理
+        if self.is_spin_polarized:
+            df1 = result.loc[:,0]
+            df2 = pd.DataFrame(result.values[:, 1:num_bonds*2+1])
+            df3 = pd.DataFrame(result.values[:, num_bonds*2+1:] )
+            result_up = pd.concat([df1,df2], axis=1, ignore_index=True)
+            result_up.columns = columns
+            result_down = pd.concat([df1,df3], axis=1, ignore_index=True)
+            result_down.columns = columns
+            return (result_up + result_down)/2
+        else:
+            result.columns = columns
+            return result
 
-    def cohp_get_bond(self, bond='', is_coop=False):
+    def cohp_get_bond_from_str(self, bond_str:str, is_coop=False):
         df = self.cohp_as_DataFrame(is_coop)
         columns = [ df.columns[0] ]
-        if len(bond) == 2:
-            print('sdfasdfas')
-            for name in df.columns[1:]:
-                if re.match('.*'+bond[0] + '[0-9]*->' + bond[1] + '[0-9]*', name):
-                    print(name)
-                    columns.append(name)
-        elif len(bond) == 1:
-            for name in df.columns[1:]:
-                if re.match(bond[0] + '[0-9]*', name):
-                    columns.append(name)
-        else:
-            columns = df.columns[:3]
+        for name in df.columns[1:]:
+            if bond_str in name and 'ICOHP' not in name:
+                columns.append(name)
         return df.get(columns)
 
-
     def cohp_get_EMICOHP(self, bond_pd):
-        index_x, index_y = bond_pd.columns[:2]
         #获取Fermi能级以下的数据
-        data =  bond_pd.loc[bond_pd[index_x] < 0.0]         
+        data =  bond_pd.loc[bond_pd[bond_pd.columns[0]] <= 0.0]        
         #计算EMICOHP
-        x = data.loc[:, index_x]
-        y = data.loc[:, index_y]
-        yE = x * y
-        return round(simps(yE,x) / simps(y,x),  5)
+        x = data[data.columns[0]]
+        delta_x = round(np.mean([x[i+1]-x[i] for i in range(len(x)-1)]), 5)
+        y = data[data.columns[1:]]
+        ICOHP = np.sum(y * delta_x)
+        yE = y.mul(x, axis=0)
+        EMICOHP = np.sum(yE * delta_x) / ICOHP
+        #print('  parse ICOHP:   \n', ICOHP)
+        #print('  parse EMICOHP: \n', EMICOHP)
+        return EMICOHP
+
 
 
     def test(self):
-        test1 = self.cohp_get_bond(bond=['Co1', 'Cu13'])
-        print(test1)
+        #test1 = self.cohp_get_bond(bond=['Co1', 'Cu13'])
+        test1 = self.cohp_get_bond_from_str('C21')
+        #print(test1)
+        #print(test1.info())
+        #print(self.is_spin_polarized)
         #test2 = self.cohp_as_DataFrame()
         test3 = self.cohp_get_EMICOHP(test1)
+        #print(test2)
         print(test3)
 
 
 
 if __name__ == "__main__":
-    aaa = LobsterParse('../example')
+    aaa = LobsterCohpcarParse('../example/spin-2')
     aaa.test()
