@@ -5,7 +5,7 @@ import pandas as pd
 from scipy.integrate import simps
 
 
-class LobsterCohpcarParse():
+class LobsterParse():
     '''
     用于综合解析LOBSTER结果文件的类
     '''
@@ -96,21 +96,36 @@ class LobsterCohpcarParse():
         #print('  parse EMICOHP: \n', EMICOHP)
         return EMICOHP
 
-
+    def cohp_get_EMICOHP_all_as_df(self):
+        data = self.cohp_get_EMICOHP(self.cohp_as_DataFrame())
+        result = [ [data.index[0].split('(')[-1].replace(')', ''), 
+                    0, 
+                    data.values[0], 
+                    data.values[1] ] ]
+        for i in range(2,len(data),2):
+            bond_id = data.index[i].split('(')[-1].replace(')', '').split('_')
+            bond_name, bond_length = bond_id[0], float(bond_id[1])
+            cohp    = data.values[i]
+            emicohp = data.values[i+1]
+            result.append([bond_name, bond_length, cohp, emicohp])
+        result = pd.DataFrame(result)        
+        return result
 
     def test(self):
         #test1 = self.cohp_get_bond(bond=['Co1', 'Cu13'])
-        test1 = self.cohp_get_bond_from_str('C21')
+        #test1 = self.cohp_get_bond_from_str('C21->O22')
         #print(test1)
         #print(test1.info())
         #print(self.is_spin_polarized)
         #test2 = self.cohp_as_DataFrame()
-        test3 = self.cohp_get_EMICOHP(test1)
+        #test3 = self.cohp_get_EMICOHP(test1)
         #print(test2)
-        print(test3)
+        #print(test3, type(test3))
+        self.cohp_get_EMICOHP_all_as_df().to_csv('EMICOHPLIST.parse', sep='\t')
+        print(self.cohp_get_EMICOHP_all_as_df())
 
 
 
 if __name__ == "__main__":
-    aaa = LobsterCohpcarParse('../example/spin-2')
+    aaa = LobsterParse('../example/spin-2')
     aaa.test()
